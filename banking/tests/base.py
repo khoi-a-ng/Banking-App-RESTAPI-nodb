@@ -52,18 +52,6 @@ class BankingAPITestCase(SimpleTestCase):
             format="json",
         )
 
-    def transfer(self, from_account, to_account, amount, **extra):
-        return self.client.post(
-            "/api/transfers/",
-            {
-                "from_account": from_account,
-                "to_account": to_account,
-                "amount": amount,
-                **extra,
-            },
-            format="json",
-        )
-
     def assertErrorCode(self, response, status_code, code):
         self.assertEqual(response.status_code, status_code, response.content)
         body = response.json()

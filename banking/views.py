@@ -8,9 +8,7 @@ from banking.serializers import (
     AmountSerializer,
     CustomerSerializer,
     OpenAccountSerializer,
-    TransactionFilterSerializer,
     TransactionSerializer,
-    TransferSerializer,
 )
 
 bank = store.bank
@@ -46,8 +44,6 @@ class ApiRootView(APIView):
                     "deposit": "POST /api/accounts/{id}/deposit/",
                     "withdraw": "POST /api/accounts/{id}/withdraw/",
                     "account_transactions": "GET /api/accounts/{id}/transactions/",
-                    "transfer": "POST /api/transfers/",
-                    "ledger": "GET /api/transactions/?account_id=&type=",
                     "reset": "POST /api/reset/",
                 },
             }
@@ -148,46 +144,11 @@ class WithdrawView(APIView):
         )
 
 
-class TransferView(APIView):
-
-    def post(self, request):
-        payload = validated(TransferSerializer, request.data)
-        source, target, outgoing, incoming = bank.transfer(
-            payload["from_account"],
-            payload["to_account"],
-            payload["amount"],
-            payload["description"],
-        )
-        return Response(
-            {
-                "from_account": AccountSerializer(source).data,
-                "to_account": AccountSerializer(target).data,
-                "transactions": TransactionSerializer(
-                    [outgoing, incoming], many=True
-                ).data,
-            },
-            status=status.HTTP_201_CREATED,
-        )
-
-
 class AccountTransactionsView(APIView):
 
     def get(self, request, pk): # Checks acc hist
         bank.get_account(pk)
         return collection(TransactionSerializer, bank.list_transactions(account_id=pk))
-
-
-class TransactionListView(APIView):
-
-    def get(self, request): # Full ledger accross every acc, with filters
-
-        filters = validated(TransactionFilterSerializer, request.query_params)
-        return collection(
-            TransactionSerializer,
-            bank.list_transactions(
-                account_id=filters.get("account_id"), type=filters.get("type")
-            ),
-        )
 
 
 class ResetView(APIView):

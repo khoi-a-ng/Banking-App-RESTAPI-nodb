@@ -23,7 +23,6 @@ class DepositTests(BankingAPITestCase):
         self.assertEqual(transaction["balance_after"], 75.25)
         self.assertEqual(transaction["account_id"], self.account["id"])
         self.assertEqual(transaction["description"], "Paycheck")
-        self.assertIsNone(transaction["related_account_id"])
 
     def test_deposits_accumulate(self):
         self.deposit(self.account["id"], "10.00")

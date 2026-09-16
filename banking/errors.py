@@ -45,12 +45,6 @@ class AccountNotEmpty(BankingError):
     default_code = "account_not_empty"
 
 
-class SameAccountTransfer(BankingError):
-    status_code = status.HTTP_409_CONFLICT
-    default_detail = "The source and destination accounts must be different."
-    default_code = "same_account_transfer"
-
-
 def api_exception_handler(exc, context):
     """For every exception raised it returns {"error": {"code", "message", "details"}}."""
 

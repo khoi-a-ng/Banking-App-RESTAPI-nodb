@@ -11,10 +11,6 @@ urlpatterns = [
         views.CustomerDetailView.as_view(),
         name="customer-detail",
     ),
-    # Nested under the customer it belongs to — note this must come *after*
-    # the bare ^customers/(\d+)/?$ line only in the sense that Django takes
-    # the first match; these two can't collide because /accounts is required
-    # here and forbidden there.
     re_path(
         r"^customers/(?P<pk>\d+)/accounts/?$",
         views.CustomerAccountsView.as_view(),
@@ -40,10 +36,6 @@ urlpatterns = [
         r"^accounts/(?P<pk>\d+)/transactions/?$",
         views.AccountTransactionsView.as_view(),
         name="account-transactions",
-    ),
-    re_path(r"^transfers/?$", views.TransferView.as_view(), name="transfer"),
-    re_path(
-        r"^transactions/?$", views.TransactionListView.as_view(), name="transaction-list"
     ),
     re_path(r"^reset/?$", views.ResetView.as_view(), name="reset"),
 ]

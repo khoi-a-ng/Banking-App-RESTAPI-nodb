@@ -2,8 +2,6 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
-from banking.store import TRANSACTION_TYPES
-
 
 MAX_DIGITS = 14
 DECIMAL_PLACES = 2
@@ -30,7 +28,6 @@ class TransactionSerializer(serializers.Serializer):
     amount = money_field(read_only=True)
     balance_after = money_field(read_only=True)
     description = serializers.CharField(read_only=True)
-    related_account_id = serializers.IntegerField(read_only=True, allow_null=True)
     created_at = serializers.DateTimeField(read_only=True)
 
 
@@ -51,17 +48,3 @@ class AmountSerializer(serializers.Serializer):
     description = serializers.CharField(
         required=False, allow_blank=True, default="", max_length=200
     )
-
-
-class TransferSerializer(serializers.Serializer):
-    from_account = serializers.IntegerField()
-    to_account = serializers.IntegerField()
-    amount = money_field(min_value=Decimal("0.01"))
-    description = serializers.CharField(
-        required=False, allow_blank=True, default="", max_length=200
-    )
-
-
-class TransactionFilterSerializer(serializers.Serializer):
-    account_id = serializers.IntegerField(required=False)
-    type = serializers.ChoiceField(choices=TRANSACTION_TYPES, required=False)
