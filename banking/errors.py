@@ -22,6 +22,16 @@ class AccountNotFound(BankingError):
     default_detail = "No account exists with that id."
     default_code = "account_not_found"
 
+class CustomerNotFound(BankingError):
+    status_code = status.HTTP_404_NOT_FOUND  # 404 "no such resource"
+    default_detail = "No customer exists with that id."
+    default_code = "customer_not_found"
+
+class CustomerHasAccounts(BankingError):
+    status_code = status.HTTP_409_CONFLICT
+    default_detail = "Close the customer's accounts before deleting the customer."
+    default_code = "customer_has_accounts"
+
 
 class InsufficientFunds(BankingError):
     status_code = status.HTTP_409_CONFLICT  # 409 request conflicts with current state
