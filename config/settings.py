@@ -6,8 +6,6 @@ from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Reads the .env file at the project root (never committed — see .gitignore)
-# so DATABASE_URL doesn't have to be hardcoded here.
 load_dotenv(BASE_DIR / ".env")
 
 SECRET_KEY = "django-insecure-local-dev-key-for-the-no-db-banking-api"
@@ -16,13 +14,24 @@ ALLOWED_HOSTS = ["*"]
 
 
 INSTALLED_APPS = [
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "rest_framework.authtoken",
+    "corsheaders",
     "rest_framework",
     "banking",
 ]
 
 
 MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
+]
+
+
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
 ]
 
 
@@ -31,9 +40,6 @@ WSGI_APPLICATION = "config.wsgi.application"
 TEMPLATES = []
 
 
-# dj_database_url.parse turns the single connection string from Supabase
-# into the dict-of-settings shape Django's DATABASES expects (HOST, PORT,
-# USER, PASSWORD, etc. as separate keys) instead of parsing the URL by hand.
 DATABASES = {
     "default": dj_database_url.parse(os.environ["DATABASE_URL"]),
 }
@@ -54,11 +60,13 @@ REST_FRAMEWORK = {
         "rest_framework.parsers.MultiPartParser",
     ],
 
-    "DEFAULT_AUTHENTICATION_CLASSES": [],
 
-    "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.AllowAny"],
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework.authentication.TokenAuthentication",
+    ],
 
-    "UNAUTHENTICATED_USER": None,
+
+    "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
 
     "EXCEPTION_HANDLER": "banking.errors.api_exception_handler",
 
