@@ -1,4 +1,6 @@
+from django.conf import settings
 from rest_framework import status
+from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -153,6 +155,8 @@ class AccountTransactionsView(APIView):
 
 class ResetView(APIView):
 
-    def post(self, request): # wipes
+    def post(self, request): 
+        if not settings.DEBUG:
+            raise NotFound()
         bank.reset()
         return Response({"detail": "All accounts and transactions were cleared."})
