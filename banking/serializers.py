@@ -53,6 +53,11 @@ class LoginSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True)
 
 
+class LogoutSerializer(serializers.Serializer):
+
+    refresh = serializers.CharField()
+
+
 class AmountSerializer(serializers.Serializer):
     amount = money_field(min_value=Decimal("0.01"))
     description = serializers.CharField(
