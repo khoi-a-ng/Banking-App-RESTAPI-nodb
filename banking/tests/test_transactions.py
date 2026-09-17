@@ -61,25 +61,6 @@ class ServiceEndpointTests(BankingAPITestCase):
         self.assertEqual(response.status_code, 200, response.content)
         self.assertIn("endpoints", response.json())
 
-    def test_reset_clears_accounts_and_customers(self):
-        customer = self.create_customer()
-        account = self.create_account(
-            customer_id=customer["customer_id"], initial_deposit="100.00"
-        )
-
-        response = self.client.post("/api/reset/")
-
-        self.assertEqual(response.status_code, 200, response.content)
-        self.assertEqual(self.client.get("/api/accounts/").json()["count"], 0)
-        self.assertEqual(self.client.get("/api/customers/").json()["count"], 0)
-        self.assertEqual(
-            self.client.get(f"/api/accounts/{account['id']}/").status_code, 404
-        )
-        self.assertEqual(
-            self.client.get(f"/api/customers/{customer['customer_id']}/").status_code,
-            404,
-        )
-
     def test_urls_work_without_a_trailing_slash(self):
         customer = self.create_customer()
         response = self.client.post(

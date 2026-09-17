@@ -37,5 +37,4 @@ urlpatterns = [
         views.AccountTransactionsView.as_view(),
         name="account-transactions",
     ),
-    re_path(r"^reset/?$", views.ResetView.as_view(), name="reset"),
 ]

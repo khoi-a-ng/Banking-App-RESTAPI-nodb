@@ -106,13 +106,6 @@ class Bank:
             )
             return account, txn
 
-    def reset(self) -> None:
-
-        Transaction.objects.all().delete()
-        Account.objects.all().delete()
-        Customer.objects.all().delete()
-
-
     # Basically locks the acc so txn are one at a time thus not prone to race conditions
     def _locked_account(self, account_id) -> Account:
 
@@ -147,7 +140,3 @@ class Bank:
 
 
 bank = Bank()
-
-
-def reset() -> None:
-    bank.reset()

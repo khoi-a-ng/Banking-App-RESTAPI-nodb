@@ -1,18 +1,18 @@
-from django.test import SimpleTestCase
+from django.test import TestCase
 from rest_framework.test import APIClient
 
-from banking import store
 
-
-class BankingAPITestCase(SimpleTestCase):
+class BankingAPITestCase(TestCase):
     """Base case for the API tests.
 
-    SimpleTestCase (rather than TestCase) because the project runs without a
-    database; isolation comes from wiping the in-memory store between tests.
+    TestCase (rather than SimpleTestCase) because there is a real database
+    now: Django builds a throwaway test database, then wraps each test in a
+    transaction and rolls it back afterwards. That rollback is what isolates
+    one test from the next, so nothing has to be deleted by hand -- and the
+    tests never touch the real Supabase data.
     """
 
     def setUp(self):
-        store.reset()
         self.client = APIClient()
 
     def create_customer(self, name="Ada Lovelace", email=None):

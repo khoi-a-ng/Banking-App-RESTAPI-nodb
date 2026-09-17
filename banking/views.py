@@ -1,6 +1,4 @@
-from django.conf import settings
 from rest_framework import status
-from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -32,7 +30,7 @@ class ApiRootView(APIView):
     def get(self, request): 
         return Response(
             {
-                "service": "Banking API (in-memory, no database)",
+                "service": "Banking API",
                 "endpoints": {
                     "list_customers": "GET /api/customers/",
                     "create_customer": "POST /api/customers/",
@@ -46,7 +44,6 @@ class ApiRootView(APIView):
                     "deposit": "POST /api/accounts/{id}/deposit/",
                     "withdraw": "POST /api/accounts/{id}/withdraw/",
                     "account_transactions": "GET /api/accounts/{id}/transactions/",
-                    "reset": "POST /api/reset/",
                 },
             }
         )
@@ -151,12 +148,3 @@ class AccountTransactionsView(APIView):
     def get(self, request, pk): # Checks acc hist
         bank.get_account(pk)
         return collection(TransactionSerializer, bank.list_transactions(account_id=pk))
-
-
-class ResetView(APIView):
-
-    def post(self, request): 
-        if not settings.DEBUG:
-            raise NotFound()
-        bank.reset()
-        return Response({"detail": "All accounts and transactions were cleared."})
