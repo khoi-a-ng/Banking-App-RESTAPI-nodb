@@ -2,11 +2,13 @@ from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.db import transaction
 from rest_framework import status
-from rest_framework.authtoken.models import Token
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny, IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.views import TokenRefreshView
 
 from banking import store
 from banking.serializers import (
@@ -14,12 +16,20 @@ from banking.serializers import (
     AmountSerializer,
     CustomerSerializer,
     LoginSerializer,
+    LogoutSerializer,
     OpenAccountSerializer,
     SignupSerializer,
     TransactionSerializer,
 )
 
 bank = store.bank
+
+# when called, issues an access (short) & refresh(long-lived) token. 
+# Access token sent on every API req, refresh token only gives new access tokens
+def issue_tokens(user):
+
+    refresh = RefreshToken.for_user(user)
+    return {"access": str(refresh.access_token), "refresh": str(refresh)}
 
 
 def collection(serializer_class, items):
@@ -51,13 +61,12 @@ class SignupView(APIView):
             customer = bank.create_customer(
                 name=payload["name"], email=payload["email"], user=user
             )
-            token = Token.objects.create(user=user)
 
         return Response(
             {
-                "token": token.key,
+                **issue_tokens(user),  # -> "access" and "refresh"
                 "customer": CustomerSerializer(customer).data,
-                "is_admin": False, 
+                "is_admin": False,
             },
             status=status.HTTP_201_CREATED,
         )
@@ -77,22 +86,25 @@ class LoginView(APIView):
         if user is None:
             raise ValidationError({"detail": ["Incorrect email or password."]})
 
-        token, _ = Token.objects.get_or_create(user=user)
-
         customer = None if user.is_staff else bank.customer_for_user(user)
         return Response(
             {
-                "token": token.key,
+
+                **issue_tokens(user),
                 "customer": CustomerSerializer(customer).data if customer else None,
                 "is_admin": user.is_staff,
             }
         )
 
-
+# revokes refresh token, access token alive until exp
 class LogoutView(APIView):
 
     def post(self, request):
-        Token.objects.filter(user=request.user).delete()
+        payload = validated(LogoutSerializer, request.data)
+        try:
+            RefreshToken(payload["refresh"]).blacklist()
+        except TokenError:
+            pass
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -116,6 +128,12 @@ class MeView(APIView):
             }
         )
 
+# Access tokens 15min exp, refreshview gets new access tokens using a valid refresh token
+# Usually when the exp is over page is 401, this refreshes your page and gets a new access token silently.
+class RefreshView(TokenRefreshView):
+
+    permission_classes = [AllowAny]
+
 
 class ApiRootView(APIView):
 
@@ -126,8 +144,13 @@ class ApiRootView(APIView):
             {
                 "service": "Banking API",
                 "endpoints": {
+                    "signup": "POST /api/auth/signup/",
+                    "login": "POST /api/auth/login/",
+                    "refresh": "POST /api/auth/refresh/",
+                    "logout": "POST /api/auth/logout/",
+                    "me": "GET /api/auth/me/",
+                    # The customer endpoints below are admin-only.
                     "list_customers": "GET /api/customers/",
-                    "create_customer": "POST /api/customers/",
                     "retrieve_customer": "GET /api/customers/{id}/",
                     "delete_customer": "DELETE /api/customers/{id}/",
                     "customer_accounts": "GET /api/customers/{id}/accounts/",
