@@ -32,7 +32,6 @@ class TransactionSerializer(serializers.Serializer):
 
 
 class OpenAccountSerializer(serializers.Serializer):
-    customer_id = serializers.IntegerField()
     initial_deposit = money_field(
         required=False, default=Decimal("0.00"), min_value=Decimal("0.00")
     )
@@ -42,6 +41,17 @@ class CustomerSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=100, trim_whitespace=True)
     email = serializers.EmailField(max_length=100, trim_whitespace=True)
     created_at = serializers.DateTimeField(read_only=True)
+
+class SignupSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=100, trim_whitespace=True)
+    email = serializers.EmailField(max_length=100, trim_whitespace=True)
+    password = serializers.CharField(min_length=8, write_only=True)
+
+
+class LoginSerializer(serializers.Serializer):
+    email = serializers.EmailField(max_length=100, trim_whitespace=True)
+    password = serializers.CharField(write_only=True)
+
 
 class AmountSerializer(serializers.Serializer):
     amount = money_field(min_value=Decimal("0.01"))

@@ -49,8 +49,20 @@ class Bank:
         return account.transactions.all()
 
 
-    def create_customer(self, name: str, email: str) -> Customer:
-        return Customer.objects.create(name=name, email=email)
+    def create_customer(self, name: str, email: str, user=None) -> Customer:
+        return Customer.objects.create(name=name, email=email, user=user)
+
+    def customer_for_user(self, user) -> Customer:
+        try:
+            return user.customer
+        except (Customer.DoesNotExist, AttributeError):
+            raise CustomerNotFound()
+
+    def get_owned_account(self, account_id, customer_id) -> Account:
+        account = self.get_account(account_id)
+        if account.customer_id != int(customer_id):
+            raise AccountNotFound()
+        return account
 
     def delete_customer(self, customer_id) -> None:
         with transaction.atomic():
@@ -106,13 +118,6 @@ class Bank:
             )
             return account, txn
 
-    def reset(self) -> None:
-
-        Transaction.objects.all().delete()
-        Account.objects.all().delete()
-        Customer.objects.all().delete()
-
-
     # Basically locks the acc so txn are one at a time thus not prone to race conditions
     def _locked_account(self, account_id) -> Account:
 
@@ -147,7 +152,3 @@ class Bank:
 
 
 bank = Bank()
-
-
-def reset() -> None:
-    bank.reset()

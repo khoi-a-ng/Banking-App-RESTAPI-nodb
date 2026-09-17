@@ -1,3 +1,4 @@
+from django.contrib.auth.models import User
 from django.db import models
 
 
@@ -10,6 +11,13 @@ class TransactionType(models.TextChoices):
 class Customer(models.Model): 
 
     customer_id = models.BigAutoField(primary_key=True) # bigautofield is just an 64-bit incrementer
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name="customer",
+        null=True,
+        blank=True,
+    )
     name = models.CharField(max_length=100)
     email = models.EmailField(max_length=100)
     created_at = models.DateTimeField(auto_now_add=True)
