@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { api, auth } from "./api";
 
-// One component for both login and signup — they share a layout and differ
-// only by one extra field and which endpoint they call.
+
 export default function LoginPage({ onAuthenticated }) {
   const [mode, setMode] = useState("login");
   const [name, setName] = useState("");
@@ -20,7 +19,7 @@ export default function LoginPage({ onAuthenticated }) {
       const result = isSignup
         ? await api.signup(name, email, password)
         : await api.login(email, password);
-      auth.set(result.token);
+      auth.set(result);
       setError(null);
       onAuthenticated(result.customer);
     } catch (err) {
