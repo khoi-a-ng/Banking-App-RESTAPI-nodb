@@ -2,12 +2,6 @@ import { useState } from "react";
 import { money } from "./api";
 import { when } from "./ActivityFeed";
 
-// The account panel: balance, move money, close, and full history.
-//
-// Shared by the customer's Accounts page and the admin view so the two can't
-// drift apart. The parent decides what's *allowed* (canDisburse) and what
-// *happens* (onMove / onClose) — this component only renders and collects
-// input. It never calls the API itself.
 export default function AccountDetail({
   account,
   transactions,
@@ -33,8 +27,6 @@ export default function AccountDetail({
   }
 
   const hasMoney = Number(account.balance) > 0;
-  // A customer can't close an account with money in it; staff can, and the
-  // balance is paid out as a recorded withdrawal first.
   const closeBlocked = hasMoney && !canDisburse;
 
   return (
@@ -146,8 +138,7 @@ export default function AccountDetail({
   );
 }
 
-// The audit column. "Staff" is the one that matters — it means an admin, not
-// the account holder, moved this money.
+
 function byLabel(t, viewerEmail) {
   if (t.by_staff) return <span className="badge staff">Staff</span>;
   if (!t.performed_by) return <span className="muted">—</span>;

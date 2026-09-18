@@ -3,9 +3,7 @@ import { api, money } from "./api";
 import AccountDetail from "./AccountDetail";
 import ActivityFeed from "./ActivityFeed";
 
-// The admin view. Every call this page makes is behind IsAdminUser on the
-// backend, so a regular customer landing here would just see 403s — the
-// protection is server-side, not the fact that this page is hard to reach.
+
 export default function AdminPage({ email }) {
   const [overview, setOverview] = useState(null);
   const [customers, setCustomers] = useState([]);
@@ -33,8 +31,6 @@ export default function AdminPage({ email }) {
     }
   }
 
-  // Accounts are fetched per customer, on click, rather than all upfront —
-  // loading them for everyone would be one request per customer.
   async function selectCustomer(c) {
     setCustomer(c);
     setAccounts([]);
@@ -60,8 +56,7 @@ export default function AdminPage({ email }) {
     }
   }
 
-  // After money moves, everything derived from it is stale at once: the
-  // totals, the customer's account list, the selected balance, the history.
+
   async function refresh() {
     const [o, accts] = await Promise.all([
       api.adminOverview(),
@@ -89,7 +84,7 @@ export default function AdminPage({ email }) {
       setError(null);
       await refresh();
     } catch (err) {
-      setError(err.message); // e.g. insufficient_funds (409)
+      setError(err.message); 
     }
   }
 
@@ -137,13 +132,10 @@ export default function AdminPage({ email }) {
       setError(null);
       await loadTop();
     } catch (err) {
-      // customer_has_accounts (409) — the backend's own message shows here
       setError(err.message);
     }
   }
 
-  // Search is client-side: the whole list is already here, and at this size
-  // a round trip per keystroke would be slower than filtering in memory.
   const q = query.trim().toLowerCase();
   const visible = q
     ? customers.filter(

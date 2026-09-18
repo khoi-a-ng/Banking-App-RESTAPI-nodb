@@ -23,9 +23,7 @@ def money(value) -> Decimal:
 
 class Bank:
 
-    # Nothing is ever hard-deleted. A closed account or a deactivated customer
-    # keeps its rows -- and its history -- but stops showing up here. These
-    # two querysets are the one place that rule is written down.
+    # isnull filter out closed accounts and deactivated customers.
     def _open_accounts(self):
         return Account.objects.filter(closed_at__isnull=True)
 
@@ -57,8 +55,6 @@ class Bank:
 
     def list_transactions(self, account_id):
         account = self.get_account(account_id)
-        # select_related pulls the performing user in the same query, instead
-        # of one extra query per row when the serializer reads .email.
         return account.transactions.select_related("performed_by")
 
     def recent_transactions_for_customer(self, customer_id, limit=5):
@@ -68,12 +64,10 @@ class Bank:
         ).select_related("performed_by")[:limit]
 
     def overview(self, recent=8) -> dict:
-        """Bank-wide totals for the admin dashboard, computed in the database
-        rather than by fetching every account and adding them up in Python."""
         totals = self._open_accounts().aggregate(
-            count=Count("id"), balance=Sum("balance")
+            count=Count("id"), balance=Sum("balance") # computed in DB
         )
-        return {
+        return { # These are the pill overview you see on admin dashboard
             "customers": self._active_customers().count(),
             "accounts": totals["count"],
             "total_balance": totals["balance"] or ZERO,
@@ -90,7 +84,7 @@ class Bank:
             customer = user.customer
         except (Customer.DoesNotExist, AttributeError):
             raise CustomerNotFound()
-        if customer.deactivated_at is not None:
+        if customer.deactivated_at is not None: 
             raise CustomerNotFound()
         return customer
 
@@ -101,21 +95,14 @@ class Bank:
         return account
 
     def account_for_user(self, account_id, user) -> Account:
-        """The account this login is allowed to touch.
 
-        Staff can reach any account. Everyone else only their own -- and
-        somebody else's looks identical to one that doesn't exist (404), so
-        the error code never confirms which ids are real.
-        """
         if user.is_staff:
             return self.get_account(account_id)
         customer = self.customer_for_user(user)
         return self.get_owned_account(account_id, customer.customer_id)
 
     def delete_customer(self, customer_id) -> None:
-        """Deactivate, not delete. The customer vanishes from the API and can
-        no longer sign in, but their rows stay -- a bank doesn't get to forget
-        who it did business with."""
+
         with transaction.atomic():
             customer = self.get_customer(customer_id)
             if customer.accounts.filter(closed_at__isnull=True).exists():
@@ -123,8 +110,6 @@ class Bank:
             customer.deactivated_at = timezone.now()
             customer.save(update_fields=["deactivated_at"])
             if customer.user_id:
-                # authenticate() refuses inactive users, so this is what
-                # actually locks them out.
                 customer.user.is_active = False
                 customer.user.save(update_fields=["is_active"])
 
@@ -147,12 +132,7 @@ class Bank:
             return account
 
     def close_account(self, account_id, *, actor=None) -> None:
-        """Close an account. Soft: sets closed_at and keeps every row.
 
-        A customer can only close an empty account. Staff can close one that
-        still holds money, but the balance leaves through a withdrawal with
-        their name on it -- it is never allowed to simply disappear.
-        """
         with transaction.atomic():
             account = self._locked_account(account_id)
 

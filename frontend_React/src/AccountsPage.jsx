@@ -15,8 +15,6 @@ export default function AccountsPage({ viewerEmail }) {
 
   async function loadAccounts() {
     try {
-      // No customer id needed — the API returns only *your* accounts,
-      // based on the token attached to the request.
       const data = await api.listAccounts();
       setAccounts(data.results);
       setError(null);
@@ -35,8 +33,7 @@ export default function AccountsPage({ viewerEmail }) {
     }
   }
 
-  // Fire all three refreshes at once — sequential awaits left the panel
-  // showing a stale balance while each Supabase round-trip completed.
+  // Refresh the account list, the selected account, and its transactions concurrently.
   async function refresh(accountId) {
     const [list, account, txns] = await Promise.all([
       api.listAccounts(),
@@ -67,7 +64,7 @@ export default function AccountsPage({ viewerEmail }) {
       setError(null);
       await refresh(selected.id);
     } catch (err) {
-      setError(err.message); // e.g. insufficient_funds (409)
+      setError(err.message); 
     }
   }
 
@@ -79,7 +76,7 @@ export default function AccountsPage({ viewerEmail }) {
       setError(null);
       await loadAccounts();
     } catch (err) {
-      setError(err.message); // e.g. account_not_empty (409)
+      setError(err.message);
     }
   }
 

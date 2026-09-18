@@ -12,3 +12,6 @@ Thumbs.db
 # SAM writes your DB url and secret key into this
 samconfig.toml
 .aws-sam/
+
+# Built Lambda package - regenerate, do not commit
+lambda-deploy.zip

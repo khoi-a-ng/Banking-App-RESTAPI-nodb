@@ -211,8 +211,6 @@ class AccountDetailView(APIView):
 
     def delete(self, request, pk):
         bank.account_for_user(pk, request.user)  # 404 unless it's theirs, or they're staff
-        # actor decides the rule: a customer needs an empty account, staff
-        # can close one with money in it and the balance is disbursed.
         bank.close_account(pk, actor=request.user)
         return Response(status=status.HTTP_204_NO_CONTENT) # Delete succeeded
 
@@ -255,8 +253,6 @@ class CustomerAccountsView(APIView):
 
 
 class AdminOverviewView(APIView):
-    """Bank-wide numbers for the admin dashboard. One request, computed in the
-    database -- not one request per customer added up in the browser."""
 
     permission_classes = [IsAdminUser]
 

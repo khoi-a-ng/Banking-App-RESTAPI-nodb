@@ -7,9 +7,6 @@ export default function HomePage({ customer, onGoToAccounts }) {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    // One call gets the customer, their accounts, their recent activity and
-    // the total — the backend does the summing so the frontend can't
-    // disagree with it.
     api.me().then(setSummary).catch((e) => setError(e.message));
   }, []);
 

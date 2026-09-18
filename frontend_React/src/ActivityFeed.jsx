@@ -1,8 +1,6 @@
 import { money } from "./api";
 
-// A list of transactions as a feed rather than a table. Used on the customer's
-// home page (their own recent activity) and the admin overview (bank-wide,
-// where each row also says whose account it was).
+
 export default function ActivityFeed({
   items = [],
   showCustomer = false,

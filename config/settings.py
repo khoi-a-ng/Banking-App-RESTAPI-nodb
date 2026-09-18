@@ -78,15 +78,7 @@ TEMPLATES = []
 
 
 DATABASES = {
-    # conn_max_age=0 closes the connection after every request. That is wrong
-    # for a long-running server and essential on Lambda: each invocation is
-    # its own process, and connections held open would pile up against
-    # Supabase's pooler until it refuses new ones.
-    #
-    # It also means Lambda must use Supabase's TRANSACTION pooler (port 6543),
-    # not the session pooler (5432). Verified that select_for_update() still
-    # works there -- transaction-mode pooling pins a server connection for the
-    # life of a transaction, which is exactly as long as the row lock needs.
+
     "default": dj_database_url.parse(os.environ["DATABASE_URL"], conn_max_age=0),
 }
 
