@@ -112,6 +112,12 @@ export const api = {
     }),
 
   listTransactions: (accountId) => request(`/accounts/${accountId}/transactions/`),
+
+  // --- Admin only (403 for everyone else) ---
+  listCustomers: () => request("/customers/"),
+  customerAccounts: (customerId) => request(`/customers/${customerId}/accounts/`),
+  deleteCustomer: (customerId) =>
+    request(`/customers/${customerId}/`, { method: "DELETE" }),
 };
 
 export const money = (value) =>

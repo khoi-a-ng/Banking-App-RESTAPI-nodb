@@ -19,11 +19,10 @@ export default function LoginPage({ onAuthenticated }) {
       const result = isSignup
         ? await api.signup(name, email, password)
         : await api.login(email, password);
-      auth.set(result);
+      auth.set(result); // stores both access and refresh
       setError(null);
-      onAuthenticated(result.customer);
+      onAuthenticated(result);
     } catch (err) {
-      // The backend returns field errors, e.g. {"email": ["...already exists"]}
       const detail = err.details
         ? Object.values(err.details).flat().join(" ")
         : err.message;
