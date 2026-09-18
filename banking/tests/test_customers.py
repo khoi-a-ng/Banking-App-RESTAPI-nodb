@@ -15,7 +15,8 @@ class SignupTests(BankingAPITestCase):
 
         self.assertEqual(response.status_code, 201, response.content)
         body = response.json()
-        self.assertIn("token", body)
+        self.assertIn("access", body)
+        self.assertIn("refresh", body)
         self.assertEqual(body["customer"]["name"], "Jane Doe")
         self.assertEqual(body["customer"]["email"], "jane@example.com")
 
@@ -41,7 +42,7 @@ class SignupTests(BankingAPITestCase):
         self.assertFalse(response.json()["is_admin"])
 
         # And the new user really is denied at an admin-only endpoint.
-        client.credentials(HTTP_AUTHORIZATION=f"Token {response.json()['token']}")
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {response.json()['access']}")
         self.assertEqual(client.get("/api/customers/").status_code, 403)
 
     def test_password_is_never_returned(self):
@@ -108,7 +109,7 @@ class LoginTests(BankingAPITestCase):
         )
 
         self.assertEqual(response.status_code, 200, response.content)
-        self.assertIn("token", response.json())
+        self.assertIn("access", response.json())
 
     def test_wrong_password_is_rejected(self):
         client = APIClient()
@@ -157,7 +158,7 @@ class AuthenticationRequiredTests(BankingAPITestCase):
         self.assertEqual(self.client.get("/api/auth/me/").status_code, 401)
 
     def test_an_invalid_token_is_rejected(self):
-        self.client.credentials(HTTP_AUTHORIZATION="Token not-a-real-token")
+        self.client.credentials(HTTP_AUTHORIZATION="Bearer not-a-real-token")
 
         self.assertEqual(self.client.get("/api/accounts/").status_code, 401)
 
@@ -176,14 +177,31 @@ class MeTests(BankingAPITestCase):
 
 
 class LogoutTests(BankingAPITestCase):
-    def test_logout_invalidates_the_token(self):
+    def test_logout_revokes_the_refresh_token(self):
         self.assertEqual(self.client.get("/api/accounts/").status_code, 200)
 
-        self.client.post("/api/auth/logout/")
+        response = self.client.post(
+            "/api/auth/logout/", {"refresh": self.default_refresh}, format="json"
+        )
+        self.assertEqual(response.status_code, 204, response.content)
 
-        # The same token no longer works — it was deleted server-side, not
-        # just forgotten by the browser.
-        self.assertEqual(self.client.get("/api/accounts/").status_code, 401)
+        # The refresh token is blacklisted, so the session cannot be extended.
+        renew = self.client.post(
+            "/api/auth/refresh/", {"refresh": self.default_refresh}, format="json"
+        )
+        self.assertEqual(renew.status_code, 401, renew.content)
+
+    def test_logout_cannot_revoke_an_access_token_that_is_already_out(self):
+        # This used to assert 401. Under DRF tokens, logout deleted the row
+        # and the token died on the spot. A JWT is not stored anywhere, so
+        # there is nothing to delete -- it stays valid until it expires.
+        # Kept as a test rather than dropped, because the behaviour changed
+        # and the change should be visible, not silently lost.
+        self.client.post(
+            "/api/auth/logout/", {"refresh": self.default_refresh}, format="json"
+        )
+
+        self.assertEqual(self.client.get("/api/accounts/").status_code, 200)
 
 
 class AdminTests(BankingAPITestCase):

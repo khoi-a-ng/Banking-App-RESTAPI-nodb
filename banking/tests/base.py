@@ -1,7 +1,7 @@
 from django.contrib.auth.models import User
 from django.test import TestCase
-from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from banking.models import Customer
 
@@ -39,13 +39,20 @@ class BankingAPITestCase(TestCase):
         self.assertEqual(response.status_code, 201, response.content)
         body = response.json()
         if login:
-            self.default_token = body["token"]
-            self.authenticate(body["token"])
+            # Signup hands back two tokens now. The refresh one is kept so
+            # tests that exercise logout/refresh have it to hand.
+            self.default_token = body["access"]
+            self.default_refresh = body["refresh"]
+            self.authenticate(body["access"])
         return body["customer"]
 
     def authenticate(self, token):
-        """Send `Authorization: Token <key>` on every subsequent request."""
-        self.client.credentials(HTTP_AUTHORIZATION=f"Token {token}")
+        """Send `Authorization: Bearer <jwt>` on every subsequent request.
+
+        The scheme word changed with the swap to JWT: DRF's TokenAuthentication
+        looked for `Token`, simplejwt looks for `Bearer`.
+        """
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
 
     def logout(self):
         self.client.credentials()  # clears the header
@@ -62,8 +69,10 @@ class BankingAPITestCase(TestCase):
             password=password,
             is_staff=True,
         )
-        token = Token.objects.create(user=user)
-        return user, token.key
+        # Minted directly rather than through the login endpoint, same as the
+        # old Token.objects.create() did.
+        access = RefreshToken.for_user(user).access_token
+        return user, str(access)
 
     def make_other_customer(self, name="Jane Doe"):
         """A second customer, returned with their token, without disturbing
@@ -80,7 +89,7 @@ class BankingAPITestCase(TestCase):
         )
         self.assertEqual(response.status_code, 201, response.content)
         body = response.json()
-        return body["customer"], body["token"]
+        return body["customer"], body["access"]
 
     # --- Domain helpers ------------------------------------------------
 
