@@ -1,45 +1,65 @@
-// Thin wrapper around the Django API.
-//
-// Everything goes through request() so the error envelope your backend
-// returns — {"error": {"code", "message", "details"}} — gets unpacked in one
-// place instead of at every call site.
 
 const BASE_URL = "http://127.0.0.1:8000/api";
-const TOKEN_KEY = "olivebank.token";
+const ACCESS_KEY = "olivebank.access";
+const REFRESH_KEY = "olivebank.refresh";
 
-// The token lives in localStorage so a page refresh doesn't log you out.
 export const auth = {
-  get: () => localStorage.getItem(TOKEN_KEY),
-  set: (token) => localStorage.setItem(TOKEN_KEY, token),
-  clear: () => localStorage.removeItem(TOKEN_KEY),
+  get: () => localStorage.getItem(ACCESS_KEY),
+  getRefresh: () => localStorage.getItem(REFRESH_KEY),
+
+  set: ({ access, refresh }) => {
+    localStorage.setItem(ACCESS_KEY, access);
+    if (refresh) localStorage.setItem(REFRESH_KEY, refresh);
+  },
+  clear: () => {
+    localStorage.removeItem(ACCESS_KEY);
+    localStorage.removeItem(REFRESH_KEY);
+  },
 };
 
-async function request(path, options = {}) {
+async function renewAccessToken() {
+  const refresh = auth.getRefresh();
+  if (!refresh) return false;
+
+  const response = await fetch(`${BASE_URL}/auth/refresh/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refresh }),
+  });
+
+  if (!response.ok) {
+    auth.clear(); // refresh token expired or blacklisted — truly logged out
+    return false;
+  }
+
+  auth.set(await response.json());
+  return true;
+}
+
+async function request(path, options = {}, isRetry = false) {
   const token = auth.get();
   const response = await fetch(`${BASE_URL}${path}`, {
     headers: {
       "Content-Type": "application/json",
-      // This header is what DRF's TokenAuthentication reads to identify you.
-      ...(token ? { Authorization: `Token ${token}` } : {}),
+      // `Bearer` header scheme for the access token
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     ...options,
   });
 
-  // Token expired/deleted server-side (e.g. you logged out elsewhere) —
-  // clear the stale copy so the app returns to the login screen.
-  if (response.status === 401) {
-    auth.clear();
+
+  if (response.status === 401 && !isRetry) {
+    if (await renewAccessToken()) {
+      return request(path, options, true);
+    }
+    auth.clear(); // couldn't renew — back to the login screen
   }
 
-  // 204 No Content (what close/delete return) has an empty body, so calling
-  // .json() on it would throw.
   if (response.status === 204) return null;
 
   const body = await response.json();
 
   if (!response.ok) {
-    // Surface the backend's own message, e.g. "The account does not hold
-    // enough funds for this operation."
     const error = new Error(body?.error?.message ?? "Something went wrong.");
     error.code = body?.error?.code;
     error.details = body?.error?.details;
@@ -50,7 +70,7 @@ async function request(path, options = {}) {
 }
 
 export const api = {
-  // --- Auth ---
+
   signup: (name, email, password) =>
     request("/auth/signup/", {
       method: "POST",
@@ -61,7 +81,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ email, password }),
     }),
-  logout: () => request("/auth/logout/", { method: "POST" }),
+
+  logout: () =>
+    request("/auth/logout/", {
+      method: "POST",
+      body: JSON.stringify({ refresh: auth.getRefresh() }),
+    }),
   me: () => request("/auth/me/"),
 
   // --- Accounts (all scoped to the logged-in customer by the token) ---
