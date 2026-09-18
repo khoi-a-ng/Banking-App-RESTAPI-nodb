@@ -10,6 +10,7 @@ urlpatterns = [
     re_path(r"^auth/refresh/?$", views.RefreshView.as_view(), name="refresh"),
     re_path(r"^auth/logout/?$", views.LogoutView.as_view(), name="logout"),
     re_path(r"^auth/me/?$", views.MeView.as_view(), name="me"),
+    re_path(r"^admin/overview/?$", views.AdminOverviewView.as_view(), name="admin-overview"),
     re_path(r"^customers/?$", views.CustomerListView.as_view(), name="customer-list"),
     re_path(
         r"^customers/(?P<pk>\d+)/?$",
