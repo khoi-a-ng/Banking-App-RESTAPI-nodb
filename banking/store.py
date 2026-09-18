@@ -1,6 +1,8 @@
 from decimal import Decimal
 
 from django.db import transaction
+from django.db.models import Count, Sum
+from django.utils import timezone
 
 from banking.errors import (
     AccountNotEmpty,
@@ -21,42 +23,76 @@ def money(value) -> Decimal:
 
 class Bank:
 
+    # Nothing is ever hard-deleted. A closed account or a deactivated customer
+    # keeps its rows -- and its history -- but stops showing up here. These
+    # two querysets are the one place that rule is written down.
+    def _open_accounts(self):
+        return Account.objects.filter(closed_at__isnull=True)
+
+    def _active_customers(self):
+        return Customer.objects.filter(deactivated_at__isnull=True)
+
     def get_customer(self, customer_id) -> Customer:
         try:
             # .get(pk=...) runs SELECT ... WHERE customer_id = x,
-            return Customer.objects.get(pk=int(customer_id))
+            return self._active_customers().get(pk=int(customer_id))
         except (Customer.DoesNotExist, TypeError, ValueError):
             raise CustomerNotFound()
 
     def get_account(self, account_id) -> Account:
         try:
-            return Account.objects.get(pk=int(account_id))
+            return self._open_accounts().get(pk=int(account_id))
         except (Account.DoesNotExist, TypeError, ValueError):
             raise AccountNotFound()
 
     def list_customers(self):
-        return Customer.objects.all()
+        return self._active_customers()
 
     def list_accounts(self):
-        return Account.objects.all()
+        return self._open_accounts()
 
     def list_accounts_for_customer(self, customer_id):
         customer = self.get_customer(customer_id)
-        return customer.accounts.all()
+        return customer.accounts.filter(closed_at__isnull=True)
 
     def list_transactions(self, account_id):
         account = self.get_account(account_id)
-        return account.transactions.all()
+        # select_related pulls the performing user in the same query, instead
+        # of one extra query per row when the serializer reads .email.
+        return account.transactions.select_related("performed_by")
 
+    def recent_transactions_for_customer(self, customer_id, limit=5):
+        return Transaction.objects.filter(
+            account__customer_id=int(customer_id),
+            account__closed_at__isnull=True,
+        ).select_related("performed_by")[:limit]
+
+    def overview(self, recent=8) -> dict:
+        """Bank-wide totals for the admin dashboard, computed in the database
+        rather than by fetching every account and adding them up in Python."""
+        totals = self._open_accounts().aggregate(
+            count=Count("id"), balance=Sum("balance")
+        )
+        return {
+            "customers": self._active_customers().count(),
+            "accounts": totals["count"],
+            "total_balance": totals["balance"] or ZERO,
+            "recent_transactions": Transaction.objects.select_related(
+                "account__customer", "performed_by"
+            )[:recent],
+        }
 
     def create_customer(self, name: str, email: str, user=None) -> Customer:
         return Customer.objects.create(name=name, email=email, user=user)
 
     def customer_for_user(self, user) -> Customer:
         try:
-            return user.customer
+            customer = user.customer
         except (Customer.DoesNotExist, AttributeError):
             raise CustomerNotFound()
+        if customer.deactivated_at is not None:
+            raise CustomerNotFound()
+        return customer
 
     def get_owned_account(self, account_id, customer_id) -> Account:
         account = self.get_account(account_id)
@@ -64,14 +100,37 @@ class Bank:
             raise AccountNotFound()
         return account
 
+    def account_for_user(self, account_id, user) -> Account:
+        """The account this login is allowed to touch.
+
+        Staff can reach any account. Everyone else only their own -- and
+        somebody else's looks identical to one that doesn't exist (404), so
+        the error code never confirms which ids are real.
+        """
+        if user.is_staff:
+            return self.get_account(account_id)
+        customer = self.customer_for_user(user)
+        return self.get_owned_account(account_id, customer.customer_id)
+
     def delete_customer(self, customer_id) -> None:
+        """Deactivate, not delete. The customer vanishes from the API and can
+        no longer sign in, but their rows stay -- a bank doesn't get to forget
+        who it did business with."""
         with transaction.atomic():
             customer = self.get_customer(customer_id)
-            if customer.accounts.exists():
+            if customer.accounts.filter(closed_at__isnull=True).exists():
                 raise CustomerHasAccounts()
-            customer.delete()
+            customer.deactivated_at = timezone.now()
+            customer.save(update_fields=["deactivated_at"])
+            if customer.user_id:
+                # authenticate() refuses inactive users, so this is what
+                # actually locks them out.
+                customer.user.is_active = False
+                customer.user.save(update_fields=["is_active"])
 
-    def open_account(self, customer_id, initial_deposit: Decimal = ZERO) -> Account:
+    def open_account(
+        self, customer_id, initial_deposit: Decimal = ZERO, performed_by=None
+    ) -> Account:
         # atomic() = "all of this succeeds, or none of it does"
         with transaction.atomic():
             customer = self.get_customer(customer_id)
@@ -83,46 +142,65 @@ class Bank:
                     TransactionType.DEPOSIT,
                     money(initial_deposit),
                     "Initial deposit",
+                    performed_by=performed_by,
                 )
             return account
 
-    def close_account(self, account_id, customer_id=None) -> None:
+    def close_account(self, account_id, *, actor=None) -> None:
+        """Close an account. Soft: sets closed_at and keeps every row.
+
+        A customer can only close an empty account. Staff can close one that
+        still holds money, but the balance leaves through a withdrawal with
+        their name on it -- it is never allowed to simply disappear.
+        """
         with transaction.atomic():
             account = self._locked_account(account_id)
 
-            if customer_id is not None: # Checks if customer and acc match
-                customer = self.get_customer(customer_id)
-                if account.customer_id != customer.customer_id:
-                    raise AccountNotFound()
-
             if account.balance != ZERO:
-                raise AccountNotEmpty(details={"balance": account.balance})
-            
-            account.delete()
+                if actor is not None and actor.is_staff:
+                    self._apply(
+                        account,
+                        TransactionType.WITHDRAWAL,
+                        -account.balance,
+                        "Balance disbursed on closure",
+                        performed_by=actor,
+                    )
+                else:
+                    raise AccountNotEmpty(details={"balance": account.balance})
 
-    def deposit(self, account_id, amount, description: str = ""):
+            account.closed_at = timezone.now()
+            account.save(update_fields=["closed_at"])
+
+    def deposit(self, account_id, amount, description: str = "", performed_by=None):
         with transaction.atomic():
-            account = self._locked_account(account_id) 
+            account = self._locked_account(account_id)
             txn = self._apply(
-                account, TransactionType.DEPOSIT, money(amount), description
+                account,
+                TransactionType.DEPOSIT,
+                money(amount),
+                description,
+                performed_by=performed_by,
             )
             return account, txn
 
-    def withdraw(self, account_id, amount, description: str = ""):
+    def withdraw(self, account_id, amount, description: str = "", performed_by=None):
         with transaction.atomic():
             account = self._locked_account(account_id)
             amount = money(amount)
             self._require_funds(account, amount)
             txn = self._apply(
-                account, TransactionType.WITHDRAWAL, -amount, description
+                account,
+                TransactionType.WITHDRAWAL,
+                -amount,
+                description,
+                performed_by=performed_by,
             )
             return account, txn
 
     # Basically locks the acc so txn are one at a time thus not prone to race conditions
     def _locked_account(self, account_id) -> Account:
-
         try:
-            return Account.objects.select_for_update().get(pk=int(account_id))
+            return self._open_accounts().select_for_update().get(pk=int(account_id))
         except (Account.DoesNotExist, TypeError, ValueError):
             raise AccountNotFound()
 
@@ -138,6 +216,7 @@ class Bank:
         type: str,
         delta: Decimal,
         description: str = "",
+        performed_by=None,
     ) -> Transaction:
         account.balance = money(account.balance + delta)
         account.save(update_fields=["balance"])
@@ -148,6 +227,7 @@ class Bank:
             amount=abs(delta),
             balance_after=account.balance,
             description=description,
+            performed_by=performed_by,
         )
 
 
