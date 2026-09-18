@@ -29,6 +29,23 @@ class TransactionSerializer(serializers.Serializer):
     balance_after = money_field(read_only=True)
     description = serializers.CharField(read_only=True)
     created_at = serializers.DateTimeField(read_only=True)
+    # Who did it. A customer sees their own email on their own transactions;
+    # the case that matters is by_staff -- an admin moved this money.
+    performed_by = serializers.SerializerMethodField()
+    by_staff = serializers.SerializerMethodField()
+
+    def get_performed_by(self, txn):
+        return txn.performed_by.email if txn.performed_by_id else None
+
+    def get_by_staff(self, txn):
+        return bool(txn.performed_by_id and txn.performed_by.is_staff)
+
+
+class ActivitySerializer(TransactionSerializer):
+    """A transaction plus whose account it touched -- for feeds that span
+    many customers, where an account id alone means nothing to the reader."""
+
+    customer_name = serializers.CharField(source="account.customer.name", read_only=True)
 
 
 class OpenAccountSerializer(serializers.Serializer):
