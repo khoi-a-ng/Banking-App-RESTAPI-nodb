@@ -54,6 +54,35 @@ class AccountTransactionTests(BankingAPITestCase):
         self.assertErrorCode(response, 404, "account_not_found")
 
 
+class AuditTrailTests(BankingAPITestCase):
+    """Every transaction records who performed it. Once staff can move other
+    people's money, this is what separates an adjustment from a theft."""
+
+    def test_a_deposit_records_who_made_it(self):
+        account = self.create_account()
+        self.deposit(account["id"], "10.00")
+
+        txn = self.client.get(
+            f"/api/accounts/{account['id']}/transactions/"
+        ).json()["results"][0]
+
+        self.assertEqual(txn["performed_by"], "nina@example.com")
+        self.assertFalse(txn["by_staff"])
+
+    def test_a_staff_deposit_is_marked_as_staff(self):
+        account = self.create_account()
+        _, admin_token = self.make_admin()
+        self.authenticate(admin_token)
+        self.deposit(account["id"], "10.00", description="Manual adjustment")
+
+        txn = self.client.get(
+            f"/api/accounts/{account['id']}/transactions/"
+        ).json()["results"][0]
+
+        self.assertEqual(txn["performed_by"], "admin@example.com")
+        self.assertTrue(txn["by_staff"])
+
+
 class ServiceEndpointTests(BankingAPITestCase):
     def test_root_lists_the_available_endpoints(self):
         response = self.client.get("/api/")

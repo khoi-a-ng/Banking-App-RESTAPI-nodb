@@ -175,6 +175,16 @@ class MeTests(BankingAPITestCase):
         self.assertEqual(body["total_balance"], 150.50)
         self.assertFalse(body["is_admin"])
 
+    def test_me_includes_recent_activity(self):
+        account = self.create_account(initial_deposit="100.00")
+        self.withdraw(account["id"], "30.00", description="Groceries")
+
+        body = self.client.get("/api/auth/me/").json()
+
+        self.assertEqual(len(body["recent_transactions"]), 2)
+        self.assertEqual(body["recent_transactions"][0]["description"], "Groceries")
+        self.assertEqual(body["recent_transactions"][0]["account_id"], account["id"])
+
 
 class LogoutTests(BankingAPITestCase):
     def test_logout_revokes_the_refresh_token(self):
@@ -267,3 +277,88 @@ class AdminTests(BankingAPITestCase):
         self.assertEqual(response.status_code, 200, response.content)
         self.assertTrue(response.json()["is_admin"])
         self.assertIsNone(response.json()["customer"])
+
+    def test_admin_login_returns_their_email(self):
+        """Login has to identify an admin too, not just /me/ -- otherwise the
+        UI has nothing to show until the next page load."""
+        self.make_admin(username="boss", password="adminpass123")
+        client = APIClient()
+
+        response = client.post(
+            "/api/auth/login/",
+            {"email": "boss@example.com", "password": "adminpass123"},
+            format="json",
+        )
+
+        self.assertEqual(response.json()["email"], "boss@example.com")
+
+    def test_me_identifies_the_admin(self):
+        """An admin has no Customer row, so /me/ has to return something else
+        to identify them by -- otherwise the UI has no name to show."""
+        _, admin_token = self.make_admin(username="boss")
+        self.authenticate(admin_token)
+
+        body = self.client.get("/api/auth/me/").json()
+
+        self.assertEqual(body["email"], "boss@example.com")
+
+    def test_admin_can_delete_a_customer(self):
+        other, _ = self.make_other_customer("Jane Doe")
+        _, admin_token = self.make_admin()
+        self.authenticate(admin_token)
+
+        response = self.client.delete(f"/api/customers/{other['customer_id']}/")
+
+        self.assertEqual(response.status_code, 204, response.content)
+        names = [c["name"] for c in self.client.get("/api/customers/").json()["results"]]
+        self.assertNotIn("Jane Doe", names)
+
+    def test_deleting_a_customer_deactivates_their_login(self):
+        """Nothing is hard-deleted. The customer disappears from the list and
+        can no longer sign in, but their rows -- and history -- remain."""
+        other, _ = self.make_other_customer("Jane Doe")
+        _, admin_token = self.make_admin()
+        self.authenticate(admin_token)
+        self.client.delete(f"/api/customers/{other['customer_id']}/")
+
+        client = APIClient()
+        response = client.post(
+            "/api/auth/login/",
+            {"email": "jane@example.com", "password": "hunter2pass"},
+            format="json",
+        )
+
+        self.assertErrorCode(response, 400, "validation_error")
+
+    def test_overview_returns_bank_wide_totals(self):
+        self.create_account(initial_deposit="100.00")
+        self.create_account(initial_deposit="50.00")
+        _, other_token = self.make_other_customer("Jane Doe")
+        self.authenticate(other_token)
+        self.create_account(initial_deposit="25.00")
+        _, admin_token = self.make_admin()
+        self.authenticate(admin_token)
+
+        body = self.client.get("/api/admin/overview/").json()
+
+        self.assertEqual(body["customers"], 2)
+        self.assertEqual(body["accounts"], 3)
+        self.assertEqual(body["total_balance"], 175.00)
+        self.assertEqual(len(body["recent_transactions"]), 3)
+        # Newest first, and each one says whose account it touched.
+        self.assertEqual(body["recent_transactions"][0]["customer_name"], "Jane Doe")
+
+    def test_overview_is_admin_only(self):
+        self.assertEqual(self.client.get("/api/admin/overview/").status_code, 403)
+
+    def test_admin_cannot_delete_a_customer_who_still_holds_accounts(self):
+        """Being an admin doesn't bypass the business rule -- money first."""
+        self.create_account(initial_deposit="10.00")  # Nina now owns an account
+        _, admin_token = self.make_admin()
+        self.authenticate(admin_token)
+
+        response = self.client.delete(
+            f"/api/customers/{self.customer['customer_id']}/"
+        )
+
+        self.assertErrorCode(response, 409, "customer_has_accounts")
