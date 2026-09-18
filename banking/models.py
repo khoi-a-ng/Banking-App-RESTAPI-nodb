@@ -21,6 +21,7 @@ class Customer(models.Model):
     name = models.CharField(max_length=100)
     email = models.EmailField(max_length=100)
     created_at = models.DateTimeField(auto_now_add=True)
+    deactivated_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["customer_id"]
@@ -38,6 +39,7 @@ class Account(models.Model):
     )
     balance = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     created_at = models.DateTimeField(auto_now_add=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["id"]
@@ -58,6 +60,13 @@ class Transaction(models.Model):
     balance_after = models.DecimalField(max_digits=14, decimal_places=2)
     description = models.CharField(max_length=200, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
+    performed_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL, # keeps txn log even if usr is del (audit trail)
+        null=True,
+        blank=True,
+        related_name="performed_transactions",
+    )
 
     class Meta:
         ordering = ["-txn_id"] # (-) means sort by descending as default is increasing. Newest 1st
