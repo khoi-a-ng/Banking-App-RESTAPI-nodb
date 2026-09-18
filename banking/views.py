@@ -13,6 +13,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from banking import store
 from banking.serializers import (
     AccountSerializer,
+    ActivitySerializer,
     AmountSerializer,
     CustomerSerializer,
     LoginSerializer,
@@ -24,7 +25,7 @@ from banking.serializers import (
 
 bank = store.bank
 
-# when called, issues an access (short) & refresh(long-lived) token. 
+# issues an access (short) & refresh(long-lived) token. 
 # Access token sent on every API req, refresh token only gives new access tokens
 def issue_tokens(user):
 
@@ -92,8 +93,6 @@ class LoginView(APIView):
 
                 **issue_tokens(user),
                 "customer": CustomerSerializer(customer).data if customer else None,
-                # An admin has no customer record, so this is the only thing
-                # in the response that says who they are.
                 "email": user.email,
                 "is_admin": user.is_staff,
             }
@@ -115,8 +114,6 @@ class MeView(APIView):
 
     def get(self, request):
         if request.user.is_staff:
-            # Admins have no Customer row, so email is the only thing here
-            # that identifies them to the UI.
             return Response(
                 {
                     "customer": None,
@@ -136,6 +133,10 @@ class MeView(APIView):
                 "email": request.user.email,
                 "accounts": AccountSerializer(accounts, many=True).data,
                 "total_balance": total,
+                "recent_transactions": TransactionSerializer(
+                    bank.recent_transactions_for_customer(customer.customer_id),
+                    many=True,
+                ).data,
                 "is_admin": False,
             }
         )
@@ -161,11 +162,13 @@ class ApiRootView(APIView):
                     "refresh": "POST /api/auth/refresh/",
                     "logout": "POST /api/auth/logout/",
                     "me": "GET /api/auth/me/",
-                    # The customer endpoints below are admin-only.
+                    # Everything below here is admin-only.
+                    "admin_overview": "GET /api/admin/overview/",
                     "list_customers": "GET /api/customers/",
                     "retrieve_customer": "GET /api/customers/{id}/",
                     "delete_customer": "DELETE /api/customers/{id}/",
                     "customer_accounts": "GET /api/customers/{id}/accounts/",
+                    "open_account_for_customer": "POST /api/customers/{id}/accounts/",
                     "list_accounts": "GET /api/accounts/",
                     "open_account": "POST /api/accounts/",
                     "retrieve_account": "GET /api/accounts/{id}/",
@@ -192,6 +195,7 @@ class AccountListView(APIView):
         account = bank.open_account(
             customer_id=customer.customer_id,
             initial_deposit=payload["initial_deposit"],
+            performed_by=request.user,
         )
 
         return Response(
@@ -203,14 +207,13 @@ class AccountDetailView(APIView):
 
 
     def get(self, request, pk):
-        customer = bank.customer_for_user(request.user)
-        return Response(
-            AccountSerializer(bank.get_owned_account(pk, customer.customer_id)).data
-        )
+        return Response(AccountSerializer(bank.account_for_user(pk, request.user)).data)
 
     def delete(self, request, pk):
-        customer = bank.customer_for_user(request.user)
-        bank.close_account(pk, customer_id=customer.customer_id)
+        bank.account_for_user(pk, request.user)  # 404 unless it's theirs, or they're staff
+        # actor decides the rule: a customer needs an empty account, staff
+        # can close one with money in it and the balance is disbursed.
+        bank.close_account(pk, actor=request.user)
         return Response(status=status.HTTP_204_NO_CONTENT) # Delete succeeded
 
 
@@ -241,16 +244,38 @@ class CustomerAccountsView(APIView):
     def get(self, request, pk): # Lists all acc belonging to customer
         return collection(AccountSerializer, bank.list_accounts_for_customer(pk))
 
+    def post(self, request, pk): # Admin opens an account on a customer's behalf
+        payload = validated(OpenAccountSerializer, request.data)
+        account = bank.open_account(
+            customer_id=pk,
+            initial_deposit=payload["initial_deposit"],
+            performed_by=request.user,
+        )
+        return Response(AccountSerializer(account).data, status=status.HTTP_201_CREATED)
+
+
+class AdminOverviewView(APIView):
+    """Bank-wide numbers for the admin dashboard. One request, computed in the
+    database -- not one request per customer added up in the browser."""
+
+    permission_classes = [IsAdminUser]
+
+    def get(self, request):
+        data = bank.overview()
+        data["recent_transactions"] = ActivitySerializer(
+            data["recent_transactions"], many=True
+        ).data
+        return Response(data)
+
 
 class DepositView(APIView):
 
     def post(self, request, pk):
 
-        customer = bank.customer_for_user(request.user)
-        bank.get_owned_account(pk, customer.customer_id) # 404 unless it's theirs
+        bank.account_for_user(pk, request.user) # 404 unless it's theirs, or they're staff
         payload = validated(AmountSerializer, request.data) # validates depo
         account, transaction = bank.deposit(
-            pk, payload["amount"], payload["description"]
+            pk, payload["amount"], payload["description"], performed_by=request.user
         )
         return Response(
             {
@@ -264,11 +289,10 @@ class DepositView(APIView):
 class WithdrawView(APIView):
 
     def post(self, request, pk):
-        customer = bank.customer_for_user(request.user)
-        bank.get_owned_account(pk, customer.customer_id)
+        bank.account_for_user(pk, request.user)
         payload = validated(AmountSerializer, request.data)
         account, transaction = bank.withdraw( # store.py will raise err if balance lower than withd
-            pk, payload["amount"], payload["description"]
+            pk, payload["amount"], payload["description"], performed_by=request.user
         )
         return Response(
             {
@@ -282,6 +306,5 @@ class WithdrawView(APIView):
 class AccountTransactionsView(APIView):
 
     def get(self, request, pk): # Checks acc hist
-        customer = bank.customer_for_user(request.user)
-        bank.get_owned_account(pk, customer.customer_id)
+        bank.account_for_user(pk, request.user)
         return collection(TransactionSerializer, bank.list_transactions(account_id=pk))
