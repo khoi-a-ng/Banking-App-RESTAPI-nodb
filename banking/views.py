@@ -64,7 +64,7 @@ class SignupView(APIView):
 
         return Response(
             {
-                **issue_tokens(user),  # -> "access" and "refresh"
+                **issue_tokens(user),
                 "customer": CustomerSerializer(customer).data,
                 "is_admin": False,
             },
@@ -92,6 +92,9 @@ class LoginView(APIView):
 
                 **issue_tokens(user),
                 "customer": CustomerSerializer(customer).data if customer else None,
+                # An admin has no customer record, so this is the only thing
+                # in the response that says who they are.
+                "email": user.email,
                 "is_admin": user.is_staff,
             }
         )
@@ -112,8 +115,16 @@ class MeView(APIView):
 
     def get(self, request):
         if request.user.is_staff:
+            # Admins have no Customer row, so email is the only thing here
+            # that identifies them to the UI.
             return Response(
-                {"customer": None, "accounts": [], "total_balance": 0, "is_admin": True}
+                {
+                    "customer": None,
+                    "email": request.user.email,
+                    "accounts": [],
+                    "total_balance": 0,
+                    "is_admin": True,
+                }
             )
 
         customer = bank.customer_for_user(request.user)
@@ -122,6 +133,7 @@ class MeView(APIView):
         return Response(
             {
                 "customer": CustomerSerializer(customer).data,
+                "email": request.user.email,
                 "accounts": AccountSerializer(accounts, many=True).data,
                 "total_balance": total,
                 "is_admin": False,
