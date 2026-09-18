@@ -1,0 +1,3 @@
+# SAM looks for requirements.txt next to the template, so this points at the
+# real list in config/. Keeping one source of truth avoids the two drifting.
+-r config/requirements.txt

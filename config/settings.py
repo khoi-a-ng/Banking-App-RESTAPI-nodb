@@ -3,15 +3,47 @@ from datetime import timedelta
 from pathlib import Path
 
 import dj_database_url
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# Reads .env locally. On Lambda there is no .env file -- the same names are
+# supplied as real environment variables instead, and load_dotenv simply does
+# nothing when the file is missing.
 load_dotenv(BASE_DIR / ".env")
 
-SECRET_KEY = "django-insecure-local-dev-key-for-the-no-db-banking-api"
-DEBUG = True
-ALLOWED_HOSTS = ["*"]
+
+def env_flag(name: str, default: str = "false") -> bool:
+    return os.environ.get(name, default).strip().lower() in {"1", "true", "yes"}
+
+
+def env_list(name: str) -> list[str]:
+    """Comma-separated env var -> list. Empty string means empty list."""
+    raw = os.environ.get(name, "")
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+DEBUG = env_flag("DJANGO_DEBUG", "true")
+
+# The signing key for every JWT this API issues (see SIGNING_KEY below), so a
+# leaked value means anybody can forge a token for any user. It must come from
+# the environment in production; the fallback exists only so local development
+# and the test suite keep working without extra setup.
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "")
+if not SECRET_KEY:
+    if not DEBUG:
+        raise ImproperlyConfigured(
+            "DJANGO_SECRET_KEY must be set when DJANGO_DEBUG is off."
+        )
+    SECRET_KEY = "django-insecure-local-dev-key-do-not-deploy"
+
+# Lambda sits behind API Gateway, which supplies its own host header.
+ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS") or ["*"]
+
+# API Gateway terminates TLS and forwards the original scheme in this header;
+# without it Django thinks every request arrived over plain http.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 
 INSTALLED_APPS = [
@@ -30,9 +62,13 @@ MIDDLEWARE = [
 ]
 
 
-CORS_ALLOWED_ORIGINS = [
+# In production this is the CloudFront URL the React build is served from.
+# Locally it falls back to the Vite dev server.
+CORS_ALLOWED_ORIGINS = env_list("DJANGO_CORS_ORIGINS") or [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
 ]
 
 
@@ -42,7 +78,16 @@ TEMPLATES = []
 
 
 DATABASES = {
-    "default": dj_database_url.parse(os.environ["DATABASE_URL"]),
+    # conn_max_age=0 closes the connection after every request. That is wrong
+    # for a long-running server and essential on Lambda: each invocation is
+    # its own process, and connections held open would pile up against
+    # Supabase's pooler until it refuses new ones.
+    #
+    # It also means Lambda must use Supabase's TRANSACTION pooler (port 6543),
+    # not the session pooler (5432). Verified that select_for_update() still
+    # works there -- transaction-mode pooling pins a server connection for the
+    # life of a transaction, which is exactly as long as the row lock needs.
+    "default": dj_database_url.parse(os.environ["DATABASE_URL"], conn_max_age=0),
 }
 
 LANGUAGE_CODE = "en-us"

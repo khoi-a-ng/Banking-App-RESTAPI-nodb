@@ -8,3 +8,7 @@ __pycache__/
 Thumbs.db
 .vscode/
 .idea/
+
+# SAM writes your DB url and secret key into this
+samconfig.toml
+.aws-sam/

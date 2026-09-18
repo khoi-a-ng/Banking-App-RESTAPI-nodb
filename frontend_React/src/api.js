@@ -1,5 +1,8 @@
 
-const BASE_URL = "http://127.0.0.1:8000/api";
+// Baked in at build time by Vite. `npm run dev` uses the local Django server;
+// the production build reads VITE_API_URL (set in .env.production) so the
+// deployed site points at API Gateway instead.
+const BASE_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000/api";
 const ACCESS_KEY = "olivebank.access";
 const REFRESH_KEY = "olivebank.refresh";
 

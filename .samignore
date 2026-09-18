@@ -1,0 +1,12 @@
+# Keeps the Lambda bundle small and free of things that should never ship.
+.venv/
+.git/
+__pycache__/
+*.pyc
+.env
+frontend_React/
+postman/
+postman_collection.json
+banking/tests/
+.aws-sam/
+README.md

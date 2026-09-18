@@ -1,0 +1,96 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+
+# Infrastructure for the banking API, as code.
+#
+# `sam deploy` turns this file into real AWS resources and remembers what it
+# created, so a second deploy updates them instead of making duplicates -- and
+# `sam delete` removes every one of them. That is the reason for using a
+# template rather than clicking through the console: the stack is reproducible
+# and, more importantly, deletable.
+#
+# The database is not here. Supabase hosts it, so there is no RDS instance, no
+# VPC, and no subnet/security-group wiring to get wrong. Lambda reaches it over
+# the public internet with the connection string in DATABASE_URL.
+
+Description: Django banking API on Lambda, fronted by API Gateway
+
+Parameters:
+  DatabaseUrl:
+    Type: String
+    NoEcho: true # keeps the value out of CloudFormation's console and logs
+    Description: >
+      Supabase connection string. Must use the TRANSACTION pooler (port 6543),
+      not the session pooler -- every Lambda invocation opens its own
+      connection and would exhaust a session pool.
+  DjangoSecretKey:
+    Type: String
+    NoEcho: true
+    Description: >
+      Signs every JWT this API issues. Generate a fresh one; never reuse the
+      development key that is committed to the repository.
+  CorsOrigins:
+    Type: String
+    Default: "http://localhost:5173"
+    Description: >
+      Comma-separated origins allowed to call this API. After the frontend is
+      deployed this becomes the CloudFront URL.
+  LambdaRoleArn:
+    Type: String
+    Default: ""
+    Description: >
+      ARN of an existing Lambda execution role. Leave empty in an account
+      where you can create IAM roles and SAM will make one. Supply it in a
+      shared or workshop account, where role creation is usually blocked and
+      a role is handed to you instead.
+
+Conditions:
+  # Empty parameter -> let SAM create the role. Non-empty -> use what was given.
+  UseProvidedRole: !Not [!Equals [!Ref LambdaRoleArn, ""]]
+
+Globals:
+  Function:
+    Timeout: 30 # Supabase round trips from a cold start can be slow
+    MemorySize: 512 # also buys proportional CPU, which shortens cold starts
+    Runtime: python3.12
+
+Resources:
+  BankingApi:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: config.lambda_handler.handler
+      Description: Django + DRF banking API
+      # AWS::NoValue removes the property entirely, which is what makes SAM
+      # fall back to creating its own role.
+      Role: !If [UseProvidedRole, !Ref LambdaRoleArn, !Ref "AWS::NoValue"]
+      Environment:
+        Variables:
+          DATABASE_URL: !Ref DatabaseUrl
+          DJANGO_SECRET_KEY: !Ref DjangoSecretKey
+          DJANGO_DEBUG: "false"
+          DJANGO_ALLOWED_HOSTS: "*" # API Gateway supplies the host header
+          DJANGO_CORS_ORIGINS: !Ref CorsOrigins
+          # Stops Python writing .pyc files to a read-only filesystem.
+          PYTHONDONTWRITEBYTECODE: "1"
+      Events:
+        # One catch-all route. Django's own urls.py does the routing, so API
+        # Gateway does not need to know about individual endpoints.
+        ApiRoot:
+          Type: HttpApi
+          Properties:
+            Path: /
+            Method: ANY
+        ApiProxy:
+          Type: HttpApi
+          Properties:
+            Path: /{proxy+}
+            Method: ANY
+
+Outputs:
+  ApiUrl:
+    Description: Base URL of the deployed API
+    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+  FunctionName:
+    Description: Lambda function name, for `sam logs -n <name>`
+    Value: !Ref BankingApi
