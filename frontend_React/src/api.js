@@ -89,7 +89,7 @@ export const api = {
     }),
   me: () => request("/auth/me/"),
 
-  // --- Accounts (all scoped to the logged-in customer by the token) ---
+
   listAccounts: () => request("/accounts/"),
   openAccount: (initialDeposit) =>
     request("/accounts/", {
@@ -113,9 +113,15 @@ export const api = {
 
   listTransactions: (accountId) => request(`/accounts/${accountId}/transactions/`),
 
-  // --- Admin only (403 for everyone else) ---
+
+  adminOverview: () => request("/admin/overview/"),
   listCustomers: () => request("/customers/"),
   customerAccounts: (customerId) => request(`/customers/${customerId}/accounts/`),
+  openAccountFor: (customerId, initialDeposit) =>
+    request(`/customers/${customerId}/accounts/`, {
+      method: "POST",
+      body: JSON.stringify({ initial_deposit: initialDeposit || "0" }),
+    }),
   deleteCustomer: (customerId) =>
     request(`/customers/${customerId}/`, { method: "DELETE" }),
 };

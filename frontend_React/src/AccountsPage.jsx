@@ -1,13 +1,12 @@
 import { useEffect, useState } from "react";
 import { api, money } from "./api";
+import AccountDetail from "./AccountDetail";
 
-export default function AccountsPage() {
+export default function AccountsPage({ viewerEmail }) {
   const [accounts, setAccounts] = useState([]);
   const [selected, setSelected] = useState(null);
   const [transactions, setTransactions] = useState([]);
   const [initialDeposit, setInitialDeposit] = useState("");
-  const [amount, setAmount] = useState("");
-  const [description, setDescription] = useState("");
   const [error, setError] = useState(null);
 
   useEffect(() => {
@@ -61,15 +60,10 @@ export default function AccountsPage() {
     }
   }
 
-  async function handleMove(kind) {
+  async function handleMove(kind, amount, description) {
     try {
-      if (kind === "deposit") {
-        await api.deposit(selected.id, amount, description);
-      } else {
-        await api.withdraw(selected.id, amount, description);
-      }
-      setAmount("");
-      setDescription("");
+      if (kind === "deposit") await api.deposit(selected.id, amount, description);
+      else await api.withdraw(selected.id, amount, description);
       setError(null);
       await refresh(selected.id);
     } catch (err) {
@@ -77,9 +71,9 @@ export default function AccountsPage() {
     }
   }
 
-  async function handleClose(accountId) {
+  async function handleClose() {
     try {
-      await api.closeAccount(accountId);
+      await api.closeAccount(selected.id);
       setSelected(null);
       setTransactions([]);
       setError(null);
@@ -106,6 +100,7 @@ export default function AccountsPage() {
               <label htmlFor="initial">Initial deposit</label>
               <input
                 id="initial"
+                inputMode="decimal"
                 value={initialDeposit}
                 onChange={(e) => setInitialDeposit(e.target.value)}
                 placeholder="0.00"
@@ -124,29 +119,29 @@ export default function AccountsPage() {
         {accounts.length === 0 ? (
           <div className="empty">No accounts yet — open one above.</div>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Account</th>
-                <th>Balance</th>
-                <th>Opened</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {accounts.map((a) => (
-                <tr
-                  key={a.id}
-                  className={`selectable ${selected?.id === a.id ? "selected" : ""}`}
-                  onClick={() => selectAccount(a)}
-                >
-                  <td className="mono">#{a.id}</td>
-                  <td className="mono">{money(a.balance)}</td>
-                  <td className="muted">
-                    {new Date(a.created_at).toLocaleDateString()}
-                  </td>
-                  <td style={{ textAlign: "right" }}>
-                    <div className="btn-group" style={{ justifyContent: "flex-end" }}>
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Account</th>
+                  <th>Balance</th>
+                  <th>Opened</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {accounts.map((a) => (
+                  <tr
+                    key={a.id}
+                    className={`selectable ${selected?.id === a.id ? "selected" : ""}`}
+                    onClick={() => selectAccount(a)}
+                  >
+                    <td className="mono">#{a.id}</td>
+                    <td className="mono">{money(a.balance)}</td>
+                    <td className="muted nowrap">
+                      {new Date(a.created_at).toLocaleDateString()}
+                    </td>
+                    <td className="cell-actions">
                       <button
                         className="btn-secondary btn-sm"
                         onClick={(e) => {
@@ -156,101 +151,27 @@ export default function AccountsPage() {
                       >
                         Manage
                       </button>
-                      <button
-                        className="btn-danger btn-sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleClose(a.id);
-                        }}
-                      >
-                        Close
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      {selected && (
-        <div className="card">
-          <div className="card-head">
-            <span>Account #{selected.id}</span>
-            <span className="balance">{money(selected.balance)}</span>
-          </div>
-          <div className="card-body">
-            <div className="row">
-              <div className="field">
-                <label htmlFor="amount">Amount</label>
-                <input
-                  id="amount"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  placeholder="25.00"
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="description">Description</label>
-                <input
-                  id="description"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Paycheck"
-                />
-              </div>
-              <button
-                className="btn-primary"
-                disabled={!amount}
-                onClick={() => handleMove("deposit")}
-              >
-                Deposit
-              </button>
-              <button
-                className="btn-secondary"
-                disabled={!amount}
-                onClick={() => handleMove("withdraw")}
-              >
-                Withdraw
-              </button>
-            </div>
-          </div>
-
-          {transactions.length === 0 ? (
-            <div className="empty">No transactions on this account yet.</div>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Txn</th>
-                  <th>Type</th>
-                  <th>Amount</th>
-                  <th>Balance after</th>
-                  <th>Description</th>
-                </tr>
-              </thead>
-              <tbody>
-                {transactions.map((t) => (
-                  <tr key={t.txn_id}>
-                    <td className="mono muted">#{t.txn_id}</td>
-                    <td>{t.type}</td>
-                    <td
-                      className={`mono ${
-                        t.type === "deposit" ? "amount-in" : "amount-out"
-                      }`}
-                    >
-                      {t.type === "deposit" ? "+" : "−"}
-                      {money(t.amount)}
                     </td>
-                    <td className="mono">{money(t.balance_after)}</td>
-                    <td className="muted">{t.description || "—"}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          )}
-        </div>
+          </div>
+        )}
+      </div>
+
+      {selected && (
+        <AccountDetail
+          account={selected}
+          transactions={transactions}
+          viewerEmail={viewerEmail}
+          onMove={handleMove}
+          onClose={handleClose}
+          onDismiss={() => {
+            setSelected(null);
+            setTransactions([]);
+          }}
+        />
       )}
     </main>
   );

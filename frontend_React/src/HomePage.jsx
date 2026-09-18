@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import { api, money } from "./api";
+import ActivityFeed from "./ActivityFeed";
 
 export default function HomePage({ customer, onGoToAccounts }) {
   const [summary, setSummary] = useState(null);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    // One call gets the customer, their accounts, and the total — the
-    // backend does the summing so the frontend can't disagree with it.
+    // One call gets the customer, their accounts, their recent activity and
+    // the total — the backend does the summing so the frontend can't
+    // disagree with it.
     api.me().then(setSummary).catch((e) => setError(e.message));
   }, []);
 
@@ -42,41 +44,55 @@ export default function HomePage({ customer, onGoToAccounts }) {
         </div>
       </div>
 
-      <div className="card">
-        <div className="card-head">
-          <span>Your accounts</span>
-          <button className="btn-secondary btn-sm" onClick={onGoToAccounts}>
-            Manage accounts
-          </button>
-        </div>
-        {!summary ? (
-          <div className="empty">Loading…</div>
-        ) : summary.accounts.length === 0 ? (
-          <div className="empty">
-            No accounts yet — open one from the Accounts tab.
+      <div className="two-col">
+        <div className="card">
+          <div className="card-head">
+            <span>Your accounts</span>
+            <button className="btn-secondary btn-sm" onClick={onGoToAccounts}>
+              Manage
+            </button>
           </div>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Account</th>
-                <th>Balance</th>
-                <th>Opened</th>
-              </tr>
-            </thead>
-            <tbody>
-              {summary.accounts.map((a) => (
-                <tr key={a.id}>
-                  <td className="mono">#{a.id}</td>
-                  <td className="mono">{money(a.balance)}</td>
-                  <td className="muted">
-                    {new Date(a.created_at).toLocaleDateString()}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+          {!summary ? (
+            <div className="empty">Loading…</div>
+          ) : summary.accounts.length === 0 ? (
+            <div className="empty">No accounts yet — open one from the Accounts tab.</div>
+          ) : (
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Account</th>
+                    <th>Balance</th>
+                    <th>Opened</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {summary.accounts.map((a) => (
+                    <tr key={a.id}>
+                      <td className="mono">#{a.id}</td>
+                      <td className="mono">{money(a.balance)}</td>
+                      <td className="muted nowrap">
+                        {new Date(a.created_at).toLocaleDateString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <div className="card">
+          <div className="card-head">Recent activity</div>
+          {!summary ? (
+            <div className="empty">Loading…</div>
+          ) : (
+            <ActivityFeed
+              items={summary.recent_transactions}
+              emptyText="No activity yet — make a deposit to get started."
+            />
+          )}
+        </div>
       </div>
     </main>
   );
